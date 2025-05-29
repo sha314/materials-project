@@ -13,14 +13,12 @@ https://docs.materialsproject.org/downloading-data/using-the-api/getting-started
 # Installing using conda
 1. Install conda. You can install anaconda or miniconda from https://anaconda.org
 2. I'm gonna create a new environment in conda and install everything there
-
-$ conda create -n band
-
-$ conda activate band
-
-$ conda install conda-forge::mp-api
-
-$ conda install jupyter
+```
+conda create -n band
+conda activate band
+conda install conda-forge::mp-api
+conda install jupyter
+```
 
 3. Run jupyter notebook file
 
@@ -44,3 +42,23 @@ projections (dict[Spin, NDArray]): Orbital projections as {spin: array}.
  |               If the band structure is not spin polarized, we only store one data set under Spin.up.
  
 
+# Installing BoltzTraP2
+```
+conda activate band
+pip install BoltzTraP2
+```
+
+```
+git clone https://gitlab.com/sousaw/BoltzTraP2.git
+```
+
+
+```
+conda create -n band
+conda install numpy cython
+
+ conda install spglib -c conda-forge
+ 
+pip install BoltzTraP2
+
+```
