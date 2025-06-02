@@ -14,7 +14,7 @@ https://docs.materialsproject.org/downloading-data/using-the-api/getting-started
 1. Install conda. You can install anaconda or miniconda from https://anaconda.org
 2. I'm gonna create a new environment in conda and install everything there
 ```
-conda create -n band
+conda create -n band python=3.10
 conda activate band
 conda install conda-forge::mp-api
 conda install jupyter
@@ -43,22 +43,24 @@ projections (dict[Spin, NDArray]): Orbital projections as {spin: array}.
  
 
 # Installing BoltzTraP2
+It solves the Boltzmann transport equation for electrons under the constant relaxation time approximation (CRTA), using electronic band structures (E vs. k) and optionally the density of states (DOS) and crystal symmetry.
+
+https://gitlab.com/sousaw/BoltzTraP2.git
+
+
 ```
 conda activate band
-pip install BoltzTraP2
+conda install numpy scipy matplotlib jupyter cython spglib ase gfortran cmake make -c conda-forge
+```
+
+Make sure f2py is working:
+```
+f2py -v
 ```
 
 ```
 git clone https://gitlab.com/sousaw/BoltzTraP2.git
-```
-
-
-```
-conda create -n band
-conda install numpy cython
-
- conda install spglib -c conda-forge
- 
-pip install BoltzTraP2
-
+cd BoltzTraP2
+export CMAKE_POLICY_VERSION_MINIMUM=3.5
+python setup.py install
 ```
