@@ -28,13 +28,19 @@ from BoltzTraP2.misc import TimerContext, dir_context, info, lexit, warning
 
 
 def plot_bannds_along_kpath(bt2_file, kpaths, nkpoints):
-    band_list, ticks, dividers = get_bands_from_bt2(bt2_file, kpaths, nkpoints)
+    data, equivalences, coeffs, metadata = serialization.load_calculation(
+        bt2_file
+        )
+    efermi = data.fermi
+    print(efermi)
+    band_list, dkp_list, ticks, dividers = get_bands_from_bt2(bt2_file, kpaths, nkpoints)
     for i, kband in enumerate(band_list):
-        egrid = kband[1]
+        egrid, vband, cband = kband
+        print(egrid.shape)
         nbands = egrid.shape[0]
-        dkp = kband[0]
+        dkp = dkp_list[i]
         for i in range(nbands):
-            plt.plot(dkp, egrid[i, :], lw=2.0)
+            plt.plot(dkp, egrid[i, :]-efermi, lw=2.0)
             pass
         pass
 
@@ -42,10 +48,10 @@ def plot_bannds_along_kpath(bt2_file, kpaths, nkpoints):
     ax.set_xticks(ticks)
     ax.set_xticklabels([])
     for d in ticks:
-        ax.axvline(x=d, ls="--", lw=0.5)
+        ax.axvline(x=d, ls="--", lw=0.5, color='k')
     for d in dividers:
-        ax.axvline(x=d, ls="-", lw=2.0)
-    ax.axhline(y=0.0, lw=1.0)
+        ax.axvline(x=d, ls="-", lw=2.0, color='k')
+    ax.axhline(y=0.0, lw=1.0, color='k')
     plt.ylabel(r"$\varepsilon - \varepsilon_F\;\left[\mathrm{Ha}\right]$")
     plt.tight_layout()
     plt.show()
@@ -57,6 +63,7 @@ def get_bands_from_bt2(bt2_file, kpaths, nkpoints):
         )
     lattvec = data.get_lattvec()
     bands_list = []
+    dkp_list = []
     ticks = []
     dividers = []
     offset = 0.0
@@ -75,21 +82,23 @@ def get_bands_from_bt2(bt2_file, kpaths, nkpoints):
         dcl += offset
         # Compute the band energies
         with TimerContext() as timer:
-            egrid = fite.getBands(
-                kp, equivalences, lattvec, coeffs
-            )[0]
+            eband, vband, cband = fite.getBands(
+                kp, equivalences, lattvec, coeffs, curvature=True
+            )
             deltat = timer.get_deltat()
             print("rebuilding the bands took {:.3g} s".format(deltat))
-        egrid -= data.fermi
-        bands_list.append([dkp, egrid])
+            pass
+        bands_list.append([eband, vband, cband])
+        
+        dkp_list.append(dkp)
         # Create the plot
-        nbands = egrid.shape[0]
+        # nbands = egrid.shape[0]
         # for i in range(nbands):
         #     plt.plot(dkp, egrid[i, :], lw=2.0)
         ticks += dcl.tolist()
         dividers += [dcl[0], dcl[-1]]
         offset = dkp[-1]
-    return bands_list, ticks, dividers
+    return bands_list, dkp_list, ticks, dividers
 
 
 
