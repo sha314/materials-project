@@ -34,85 +34,32 @@ HARTREE = 27.2114  # EV
 filename = "./mp_data/vasprun.xml"
 # vasprun = Vasprun(filename, parse_projected_eigen=True)
 
-# # Extract needed data
-# structure = vasprun.final_structure
-# lattvec = structure.lattice.matrix
-# print(vasprun.atomic_symbols)
-# print(lattvec)
-# bandstructure = vasprun.get_band_structure()
-# kpoints = [k.frac_coords for k in bandstructure.kpoints]
-# keys = list(bandstructure.bands.keys())
-
-# ebands = bandstructure.bands[keys[0]]
-# nelect = vasprun.parameters['NELECT']  # total electrons
-
-
-
-
-
 import BoltzTraP2
 from BoltzTraP2.io import parse_vasprunxml
 
-out = parse_vasprunxml(filename)
-# print(out.keys())
-'fermi', 'name', 'atoms', 'nelect', 'magmom', 'kpoints', 'E'
-efermi = out['fermi']
-name = out['name']
-atoms = out['atoms']
-nelect = out['nelect']
-magmom = out['magmom']
-kpoints = out['kpoints'].T
-eband = out['E'][0]
-# print(eband.shape)
-# print(kpoints.shape)
-# print(magmom.shape)
+# out = parse_vasprunxml(filename)
 
-data = BoltzTraP2.dft.VASPLoader("./mp_data/")
+# data = BoltzTraP2.dft.VASPLoader("./mp_data/")
 
-# print(data.kpoints.shape)
-# print(data.ebands.shape)
-# print(data.magmom)
-# print(data.atoms)
-# print(data.mommat)
-# print(data.get_lattvec())
-# print(data.lattvec)
-data.mommat = None
-
+# Will read vasprun.xml from the folder. 
+# You can use BoltzTraP2.dft.VASPLoader or parse_vasprunxml or Vasprun but I'm using 
+# BoltzTraP2.dft.DFTData
 data = BoltzTraP2.dft.DFTData("./mp_data/")
 # Set energy limit here in Hartree unit
 e_lim = 0.3/HARTREE
 # print(e_lim)
-# data.bandana(-.1, .1)
-
+data.bandana(-.5, .5)
+# print(data.atoms)
+# print(data.magmom)
+# print("data.kpoints.shape ", data.kpoints.shape)
 lattvec = data.get_lattvec()
-# Create a minimalistic mock DFTData object from these elements
-class MockDFTData:
-    """Mock DFTData emulation class for the parabolic band example."""
-
-    def __init__(self):
-        """Create a MockDFTData object based on global variables."""
-        ### self.kpoints must have shape (n, 3)
-        ### self.ebands must have shape (nbands, n)
-        print("MockDFTData")
-        self.kpoints = np.copy(kpoints.T)
-        print(self.kpoints.shape)
-        # self.ebands = np.copy(eband.reshape((1, eband.size)))
-        self.ebands = np.copy(eband.T)
-        print(self.ebands.shape)
-        self.mommat = None
-
-    def get_lattvec(self):
-        """Return the matrix of lattice vectors."""
-        # lattvec = atoms.get_cell().T * Angstrom
-        return lattvec
-
-
-# data = MockDFTData()
-
+kpoints = data.kpoints
+magmom = data.magmom
+atoms = data.atoms
 
 if __name__ == "__main__":  
 
-    equivalences = BoltzTraP2.sphere.get_equivalences(atoms, magmom, FACTOR * kpoints.shape[1])
+    equivalences = BoltzTraP2.sphere.get_equivalences(atoms, magmom, FACTOR * kpoints.shape[0])
     # print(equivalences)
 
     coeffs = BoltzTraP2.fite.fitde3D(data, equivalences)
