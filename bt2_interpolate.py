@@ -17,6 +17,9 @@ import BoltzTraP2.sphere
 import BoltzTraP2.fite
 import BoltzTraP2.bandlib
 from BoltzTraP2.units import *
+import ase.dft.kpoints as asekp
+from BoltzTraP2.misc import TimerContext
+
 
 # Number of k points along each direction in the input grid
 NK = 25
@@ -25,7 +28,7 @@ EFFM = 1.
 # Minimum energy of the band
 OFFSET = .5
 # Amplification factor for the interpolation
-FACTOR =  5
+FACTOR =  50
 
 HARTREE = 27.2114  # EV
 
@@ -49,11 +52,12 @@ def get_dft_from_vasp():
     # Set energy limit here in Hartree unit
 
 
-    emin = -0.3/HARTREE
-    emax = 0.3/HARTREE
-    emin = emin + dft_vasp.fermi/HARTREE
-    emax = emax + dft_vasp.fermi/HARTREE
-    dft_vasp.bandana(emin, emax)
+    # emin = -0.3/HARTREE
+    # emax = 0.3/HARTREE
+    # emin = emin + dft_vasp.fermi/HARTREE
+    # emax = emax + dft_vasp.fermi/HARTREE
+    
+    # dft_vasp.bandana(emin, emax)
     # print(data.atoms)
     # print(data.magmom)
     # print("data.kpoints.shape ", data.kpoints.shape)
@@ -116,52 +120,59 @@ class DFTdata_Obj_from_mp:
 
 
 
-
-
-
-if __name__ == "__main__":  
+def get_seebeck():
     dft = get_dft_from_vasp()
+    erange = (-0.02, 0.02) # in Hartree
+
     # dft = DFTdata_Obj_from_mp(api_key, material_id)
-    
+    # erange = (-0.5, 0.5) # in ev
+
     lattvec = dft.get_lattvec()
 
-    emin, emax = -0.1, 0.1
-    emin = emin + dft.fermi/HARTREE
-    emax = emax + dft.fermi/HARTREE
-
-
+    print("dft.fermi ", dft.fermi)
+    # emin = emin/HARTREE + dft.fermi
+    # emax = emax/HARTREE + dft.fermi
+    
     nkpt = int(FACTOR * dft.kpoints.shape[0])
+    nkpt = 10000
     print("nkpt =", nkpt)
     equivalences = BoltzTraP2.sphere.get_equivalences(dft.atoms, dft.magmom, nkpt)
 
     coeffs = BoltzTraP2.fite.fitde3D(dft, equivalences)
+    # print("coeffs ", coeffs[0])
 
     eband, vvband, cband = BoltzTraP2.fite.getBTPbands(equivalences, coeffs, lattvec, curvature=True, nworkers=2)
 
-    dose, dos, vvdos, cdos = BoltzTraP2.bandlib.BTPDOS(eband, vvband, erange=(emin, emax), npts=2000)
+    dose, dos, vvdos, cdos = BoltzTraP2.bandlib.BTPDOS(eband, vvband, erange=erange, npts=2000)
     
     volume = np.linalg.det(dft.get_lattvec())
 
     tau = 1e-14
     # Define the temperatures and chemical potentials we are interested in
-    Tr = np.array([10., 20., 40., 80., 100., 150., 200., 300.])
-    Tr = np.array([500.])
+    Tr = np.arange(4, 300, 20)
+    # Tr = np.array([500.])
     margin = 9. * BOLTZMANN * Tr.max()
     mur_indices = np.logical_and(dose > dose.min() + margin,
                                  dose < dose.max() - margin)
     mur = dose[mur_indices]
 
+    mur  = np.array([0])  # Chemical potential
     # Obtain the Fermi integrals required to get the Onsager coefficients
     N, L0, L1, L2, Lm11 = BoltzTraP2.bandlib.fermiintegrals(
         dose, dos, vvdos, mur=mur, Tr=Tr)
     # Translate those into Onsager coefficients
     sigma, seebeck, kappa, Hall = BoltzTraP2.bandlib.calc_Onsager_coefficients(L0, L1, L2, mur, Tr, volume)
+    
     print("sigma.shape ", sigma.shape)
-    # Rescale the carrier count into a volumetric density in cm**(-3)
-    N = -N[0, ...] / (volume / (Meter / 100.)**3)
-    # Obtain the scalar conductivity and Seebeck coefficient
-    sigma = tau * sigma[0, ...].trace(axis1=1, axis2=2) / 3.
-    seebeck = seebeck[0, ...].trace(axis1=1, axis2=2) / 3.
+    print("seebeck ", seebeck.shape)
+
+    # # Rescale the carrier count into a volumetric density in cm**(-3)
+    # N = -N[0, ...] / (volume / (Meter / 100.)**3)
+    # # Obtain the scalar conductivity and Seebeck coefficient
+    # sigma = tau * sigma[0, ...].trace(axis1=1, axis2=2) / 3.
+    # seebeck = seebeck[0, ...].trace(axis1=1, axis2=2) / 3.
+    
+
     # Compute the scalar power factor
     P = sigma * seebeck * seebeck
     # Transform these quantities to more convenient units
@@ -169,13 +180,123 @@ if __name__ == "__main__":
     seebeck *= 1e6  # microvolt / K
     P *= 1e6  # microwatt / m / K**2
 
-    fig,  axes= plt.subplots(2,1,figsize=(3,4), dpi=200)
-    print(sigma.shape)
-    print(seebeck.shape)
-    axes[0].plot(Tr, sigma)
-    axes[1].plot(Tr, seebeck)
-    plt.show()
+    # print("seebeck ", seebeck)
+
+    fig,  axes= plt.subplots(2,1,figsize=(4,6), dpi=200)
+
+    i, j = 0, 0
+    S_ij = seebeck[:,0,i,j]
+    sigma_ij = sigma[:,0,i,j] * tau
+    axes[0].plot(Tr, sigma_ij)
+    axes[1].plot(Tr, S_ij)
+    print("S_{}{}".format(i, j))
+    axes[1].set_ylabel("S_{}{}".format(i, j))
+    plt.tight_layout()
+    plt.savefig("fig/Seebeck-nkpt{}-vasp.png".format(nkpt))
+    # plt.show()
+
     pass
+
+def plot_bands():
+    kpaths = [[
+        [0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.5]
+    ]]
+
+    dft = get_dft_from_vasp()
+    erange = (-0.02, 0.02) # in Hartree
+
+    # dft = DFTdata_Obj_from_mp(api_key, material_id)
+    # erange = (-0.5, 0.5) # in ev
+
+    lattvec = dft.get_lattvec()
+
+    print("dft.fermi ", dft.fermi)
+    # emin = emin/HARTREE + dft.fermi
+    # emax = emax/HARTREE + dft.fermi
+    
+    nkpt = int(FACTOR * dft.kpoints.shape[0])
+    nkpt = 1000
+    print("nkpt =", nkpt)
+    equivalences = BoltzTraP2.sphere.get_equivalences(dft.atoms, dft.magmom, nkpt)
+
+    coeffs = BoltzTraP2.fite.fitde3D(dft, equivalences)
+
+
+    lattvec = dft.get_lattvec()
+    bands_list = []
+    dkp_list = []
+    ticks = []
+    dividers = []
+    offset = 0.0
+    efermi = dft.fermi
+
+    fig, axes = plt.subplots(2,1, figsize=(3,4), dpi=200)
+    for ikpath, kpath in enumerate(kpaths):
+        print("k path #{}".format(ikpath + 1))
+        # Generate the explicit point list.
+        band_path = asekp.bandpath(kpath, dft.atoms.cell, nkpt)
+        if isinstance(band_path, asekp.BandPath):
+            # For newer versions of ASE.
+            kp = band_path.kpts
+            dkp, dcl = band_path.get_linear_kpoint_axis()[:2]
+        else:
+            # For older versions of ASE.
+            kp, dkp, dcl = band_path
+        dkp += offset
+        dcl += offset
+        # Compute the band energies
+        with TimerContext() as timer:
+            eband, vband, cband = fite.getBands(
+                kp, equivalences, lattvec, coeffs, curvature=True
+            )
+            deltat = timer.get_deltat()
+            print("rebuilding the bands took {:.3g} s".format(deltat))
+            pass
+        
+
+        axes[0].plot(dkp, eband.T-efermi, lw=2.0)
+        
+        # break
+        # vband_scalar = list(map(np.linalg.norm, vband[:, i, :].T))
+        # print(dkp.shape)
+        # print(type(vband_scalar))
+        # print(len(vband_scalar))
+        # axes[1].plot(dkp, vband_scalar, lw=2.0)
+        
+        dkp_list.append(dkp)
+        # Create the plot
+        # nbands = egrid.shape[0]
+        # for i in range(nbands):
+        #     plt.plot(dkp, egrid[i, :], lw=2.0)
+        ticks += dcl.tolist()
+        dividers += [dcl[0], dcl[-1]]
+        offset = dkp[-1]
+        pass
+
+    
+    
+    axes[0].set_xticks(ticks)
+    axes[0].set_xticklabels([])
+    for d in ticks:
+        axes[0].axvline(x=d, ls="--", lw=0.5, color='k')
+    for d in dividers:
+        axes[0].axvline(x=d, ls="-", lw=2.0, color='k')
+    axes[0].axhline(y=0.0, lw=1.0, color='k')
+    axes[0].set_ylabel(r"$\varepsilon - \varepsilon_F\;\left[\mathrm{Ha}\right]$")
+    axes[0].set_ylim(erange)
+    axes[1].set_ylabel(r"$v$")
+    plt.tight_layout()
+    plt.show()
+
+
+        
+    pass
+
+
+if __name__ == "__main__":  
+    # get_seebeck()
+    plot_bands()
 
 
 
