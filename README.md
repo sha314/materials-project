@@ -14,11 +14,17 @@ https://docs.materialsproject.org/downloading-data/using-the-api/getting-started
 1. Install conda. You can install anaconda or miniconda from https://anaconda.org
 2. I'm gonna create a new environment in conda and install everything there
 ```
-conda create -n band python=3.10
+conda create -n band python=3.8
 conda activate band
-conda install conda-forge::mp-api
-conda install jupyter
+conda install jupyter mp-api -c conda-forge
+conda install pymatgen=2024.3 -c conda-forge
 ```
+
+To see the version information
+```
+pip show pymatgen
+```
+
 
 3. Run jupyter notebook file
 
@@ -50,7 +56,8 @@ https://gitlab.com/sousaw/BoltzTraP2.git
 
 ```
 conda activate band
-conda install numpy scipy matplotlib jupyter cython spglib ase gfortran cmake make -c conda-forge
+conda install numpy scipy matplotlib cython spglib ase gfortran cmake make -c conda-forge
+conda install -c conda-forge phonopy
 ```
 
 Make sure f2py is working:
@@ -59,8 +66,69 @@ f2py -v
 ```
 
 ```
+conda install pyfftw jupyter vtk -c conda-forge
+```
+
+or 
+```
+pip install vtk
+```
+
+
+```
 git clone https://gitlab.com/sousaw/BoltzTraP2.git
 cd BoltzTraP2
 export CMAKE_POLICY_VERSION_MINIMUM=3.5
+pip install .
+```
+
+Or, try this if pip doesn't work
+```
 python setup.py install
+```
+
+
+
+
+https://gitlab.com/yiwang62/BoltzTraP2/-/blob/20210126/BoltzTrap2Y.ipynb
+
+
+
+Terminal commands
+```
+btp2 interpolate -m 5 .
+btp2 interpolate -e -0.1 -E 0.1 -m 5 .
+btp2 dope -b 1000 interpolation.bt2 30:300:10 0
+btp2 -vv integrate interpolation.bt2 30:300:10 0
+```
+
+Fermisurface
+```
+btp2 -n 10 fermisurface interpolation.bt2 0
+```
+
+
+# For regression tasks
+```
+conda install scikit-learn
+```
+
+
+```
+environment
+```
+
+# BoltzTrap2 as a module
+
+
+
+# Export and Install from .yml file
+To export
+```
+conda env export > environment.yml
+```
+
+To install
+```
+conda env create -f environment.yml
 ```
