@@ -143,7 +143,7 @@ def get_seebeck():
 
     eband, vvband, cband = BoltzTraP2.fite.getBTPbands(equivalences, coeffs, lattvec, curvature=True, nworkers=2)
 
-    dose, dos, vvdos, cdos = BoltzTraP2.bandlib.BTPDOS(eband, vvband, erange=erange, npts=2000)
+    dose, dos, vvdos, cdos = BoltzTraP2.bandlib.BTPDOS(eband-dft.efermi, vvband, erange=erange, npts=2000)
 
     print("does ", dose.shape)
     print("dos ", dos.shape)
@@ -288,6 +288,8 @@ def get_seebeck_data():
         data['seebeck_zz'] = seebeck[:,0,2,2]
         data['nkpt'] = nkpt
         data['npts'] = binNum
+        data['dos_x'] = dose
+        data['dos_y'] = dos
 
         dataToFile[binNum] = data
         
@@ -399,6 +401,39 @@ def plot_bands():
         
     pass
 
+
+def get_interpolation(out_file="interpolation.bt2"):
+    # dft = get_dft_from_vasp()
+    # erange = (-0.02, 0.02) # in Hartree
+
+    dft = DFTdata_Obj_from_mp(api_key, material_id)
+    erange = (-0.5, 0.5) # in ev
+
+    lattvec = dft.get_lattvec()
+
+    print("dft.fermi ", dft.fermi)
+    # emin = emin/HARTREE + dft.fermi
+    # emax = emax/HARTREE + dft.fermi
+    
+    nkpt = int(FACTOR * dft.kpoints.shape[0])
+    nkpt = 10000
+    print("nkpt =", nkpt)
+    equivalences = BoltzTraP2.sphere.get_equivalences(dft.atoms, dft.magmom, nkpt)
+
+    coeffs = BoltzTraP2.fite.fitde3D(dft, equivalences)
+    # print("coeffs ", coeffs[0])
+
+    metadata = BoltzTraP2.serialization.gen_bt2_metadata(
+        dft, True
+    )
+
+    BoltzTraP2.serialization.save_calculation(
+            out_file, dft, equivalences, coeffs, metadata
+        )
+    
+    
+
+    pass
 
 if __name__ == "__main__":  
     # get_seebeck()
