@@ -91,9 +91,9 @@ with open("./apikey", 'r') as f:
     api_key=f.readline()[:-1]
     print(len(api_key))
     pass
-material_id="mp-12627"
 
-class DFTdata_Obj_from_mp:
+
+class DFTdata_MP:
     """
     creates DFTdata object form materials project api
     """
@@ -106,26 +106,55 @@ class DFTdata_Obj_from_mp:
             self.lattice_vec = structure.lattice.matrix
             pass
         self.kpoints = np.array(list(map(lambda x: x.frac_coords, bs.kpoints)))
-        self.ebands = bs.bands[Spin.up]
+        print("subtracting efermi in __init__()")
+        self.efermi = bs.efermi
+        self.ebands = bs.bands[Spin.up] - self.efermi
         self.mommat = None   # Momentum Matrix
         self.magmom = None   # Magnetic Moment
         self.fermi = bs.efermi
-        self.efermi = bs.efermi
         self.source = "Custome DFT from materials project api"
+        self.erange = None
 
         pass
 
+    def bands_by_erange(self, emin, emax):
+        """
+        emin, emax: energy in eV relative to fermi level
+        """
+        # emin += self.efermi
+        # emax += self.efermi
+        self.erange = (emin, emax)
+        selected_indices = [i for i, band in enumerate(self.ebands) if any(emin <= e <= emax for e in band)]
+        self.bands_by_index(selected_indices)
+        pass
+
+    def bands_by_index(self, selected_indices):
+        print("selected bands ", selected_indices)
+        # print("total band count ", len(selected_indices))
+        self.ebands = self.ebands[selected_indices,:]
+        # print("self.ebands.shape ", self.ebands.shape)
+        pass
+
+    def plot_bands(self):
+        x = np.linspace(0, 1, self.ebands.shape[1])
+        for i in range(self.ebands.shape[0]):
+            plt.plot(x, self.ebands[i])
+            pass
+        plt.show()
+
     def get_lattvec(self):
         return self.lattice_vec
+    
 
 
 
-def get_seebeck():
+
+def get_seebeck(material_id):
     # dft = get_dft_from_vasp()
     # erange = (-0.02, 0.02) # in Hartree
 
-    dft = DFTdata_Obj_from_mp(api_key, material_id)
-    erange = (-5, 5) # in ev
+    dft = DFTdata_MP(api_key, material_id)
+    erange = (dft.efermi - 3 , dft.efermi + 3) # in ev
 
     lattvec = dft.get_lattvec()
 
@@ -134,7 +163,7 @@ def get_seebeck():
     # emax = emax/HARTREE + dft.fermi
     
     nkpt = int(FACTOR * dft.kpoints.shape[0])
-    nkpt = 20000
+    nkpt = 10000
     print("nkpt =", nkpt)
     equivalences = BoltzTraP2.sphere.get_equivalences(dft.atoms, dft.magmom, nkpt)
 
@@ -143,7 +172,7 @@ def get_seebeck():
 
     eband, vvband, cband = BoltzTraP2.fite.getBTPbands(equivalences, coeffs, lattvec, curvature=True, nworkers=2)
 
-    dose, dos, vvdos, cdos = BoltzTraP2.bandlib.BTPDOS(eband-dft.efermi, vvband, erange=erange, npts=2000)
+    dose, dos, vvdos, cdos = BoltzTraP2.bandlib.BTPDOS(eband, vvband, erange=erange, npts=2000)
 
     print("does ", dose.shape)
     print("dos ", dos.shape)
@@ -214,12 +243,16 @@ def get_seebeck():
 
     pass
 
-def get_seebeck_data():
+def get_seebeck_data(material_id):
     # dft = get_dft_from_vasp()
     # erange = (-0.02, 0.02) # in Hartree
 
-    dft = DFTdata_Obj_from_mp(api_key, material_id)
-    erange = (-0.5, 0.5) # in ev
+    dft = DFTdata_MP(api_key, material_id)
+    dft.bands_by_erange(-.3,.3)
+    # dft.plot_bands()
+
+    # erange = (dft.efermi - 3 , dft.efermi + 3) # in ev
+    erange = None
 
     lattvec = dft.get_lattvec()
 
@@ -228,7 +261,7 @@ def get_seebeck_data():
     # emax = emax/HARTREE + dft.fermi
     
     nkpt = int(FACTOR * dft.kpoints.shape[0])
-    nkpt = 10000
+    nkpt = 100_000
     print("nkpt =", nkpt)
     equivalences = BoltzTraP2.sphere.get_equivalences(dft.atoms, dft.magmom, nkpt)
 
@@ -238,7 +271,7 @@ def get_seebeck_data():
     eband, vvband, cband = BoltzTraP2.fite.getBTPbands(equivalences, coeffs, lattvec, curvature=True, nworkers=2)
 
     dataToFile = dict()
-    for binNum in [2000, 5000, 10000, 20000, 30000]:
+    for binNum in [2000, 5000, 10_000, 20_000]:
         print("binNum ", binNum)
         data = dict()
         dose, dos, vvdos, cdos = BoltzTraP2.bandlib.BTPDOS(eband, vvband, erange=erange, npts=binNum)
@@ -247,7 +280,7 @@ def get_seebeck_data():
 
         tau = 1e-14
         # Define the temperatures and chemical potentials we are interested in
-        Tr = np.array([5, 10, 15, 20, 30, 40, 55, 80, 110, 130, 160, 190, 220, 260, 300])
+        Tr = np.array([5, 10, 15, 20, 30, 40, 55, 80, 110, 130, 160, 190, 220, 260, 300, 350, 400, 450, 500])
         data['temp'] = Tr
         # Tr = np.array([500.])
         margin = 9. * BOLTZMANN * Tr.max()
@@ -283,13 +316,15 @@ def get_seebeck_data():
 
         i, j = 0, 0
         S_ij = seebeck[:,0,i,j]
+        print("S max ", np.max(np.abs(seebeck[:,0,0,0])))
         data['seebeck_xx'] = seebeck[:,0,0,0]
         data['seebeck_yy'] = seebeck[:,0,1,1]
         data['seebeck_zz'] = seebeck[:,0,2,2]
         data['nkpt'] = nkpt
         data['npts'] = binNum
-        data['dos_x'] = dose
-        data['dos_y'] = dos
+        data['dos_x'] = dos[0]
+        data['dos_y'] = dos[1]
+        data['erange'] = dft.erange
 
         dataToFile[binNum] = data
         
@@ -304,7 +339,104 @@ def get_seebeck_data():
 
     pass
 
-def plot_bands():
+def plot_bands(material_id):
+    kpaths = [[
+        [0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.5]
+    ]]
+
+    dft = get_dft_from_vasp()
+    erange = (-0.02, 0.02) # in Hartree
+
+    # dft = DFTdata_Obj_from_mp(api_key, material_id)
+    # erange = (-0.5, 0.5) # in ev
+
+    lattvec = dft.get_lattvec()
+
+    print("dft.fermi ", dft.fermi)
+    # emin = emin/HARTREE + dft.fermi
+    # emax = emax/HARTREE + dft.fermi
+    
+    nkpt = int(FACTOR * dft.kpoints.shape[0])
+    nkpt = 2000
+    print("nkpt =", nkpt)
+    equivalences = BoltzTraP2.sphere.get_equivalences(dft.atoms, dft.magmom, nkpt)
+
+    coeffs = BoltzTraP2.fite.fitde3D(dft, equivalences)
+
+
+    lattvec = dft.get_lattvec()
+    bands_list = []
+    dkp_list = []
+    ticks = []
+    dividers = []
+    offset = 0.0
+    efermi = dft.fermi
+
+    fig, axes = plt.subplots(1,1, figsize=(5,3), dpi=200)
+    for ikpath, kpath in enumerate(kpaths):
+        print("k path #{}".format(ikpath + 1))
+        # Generate the explicit point list.
+        band_path = asekp.bandpath(kpath, dft.atoms.cell, nkpt)
+        if isinstance(band_path, asekp.BandPath):
+            # For newer versions of ASE.
+            kp = band_path.kpts
+            dkp, dcl = band_path.get_linear_kpoint_axis()[:2]
+        else:
+            # For older versions of ASE.
+            kp, dkp, dcl = band_path
+        dkp += offset
+        dcl += offset
+        # Compute the band energies
+        with TimerContext() as timer:
+            eband, vband, cband = fite.getBands(
+                kp, equivalences, lattvec, coeffs, curvature=True
+            )
+            deltat = timer.get_deltat()
+            print("rebuilding the bands took {:.3g} s".format(deltat))
+            pass
+        
+
+        plt.plot(dkp, eband.T-efermi, lw=2.0)
+        
+        # break
+        # vband_scalar = list(map(np.linalg.norm, vband[:, i, :].T))
+        # print(dkp.shape)
+        # print(type(vband_scalar))
+        # print(len(vband_scalar))
+        # axes[1].plot(dkp, vband_scalar, lw=2.0)
+        
+        dkp_list.append(dkp)
+        # Create the plot
+        # nbands = egrid.shape[0]
+        # for i in range(nbands):
+        #     plt.plot(dkp, egrid[i, :], lw=2.0)
+        ticks += dcl.tolist()
+        dividers += [dcl[0], dcl[-1]]
+        offset = dkp[-1]
+        pass
+
+    
+    
+    axes.set_xticks(ticks)
+    axes.set_xticklabels([])
+    for d in ticks:
+        plt.axvline(x=d, ls="--", lw=0.5, color='k')
+    for d in dividers:
+        plt.axvline(x=d, ls="-", lw=2.0, color='k')
+    plt.axhline(y=0.0, lw=1.0, color='k')
+    axes.set_ylabel(r"$\varepsilon - \varepsilon_F\;\left[\mathrm{Ha}\right]$")
+    axes.set_ylim(erange)
+    # axes[1].set_ylabel(r"$v$")
+    plt.tight_layout()
+    
+    plt.savefig("fig/bands-vasp-nkpt{}.png".format(nkpt))
+    # plt.show()
+
+        
+    pass
+
+def plot_bands_and_dos(material_id):
     kpaths = [[
         [0.0, 0.0, 0.0],
         [0.0, 0.0, 0.5]
@@ -402,11 +534,11 @@ def plot_bands():
     pass
 
 
-def get_interpolation(out_file="interpolation.bt2"):
+def get_interpolation(material_id, out_file="interpolation.bt2"):
     # dft = get_dft_from_vasp()
     # erange = (-0.02, 0.02) # in Hartree
 
-    dft = DFTdata_Obj_from_mp(api_key, material_id)
+    dft = DFTdata_MP(api_key, material_id)
     erange = (-0.5, 0.5) # in ev
 
     lattvec = dft.get_lattvec()
@@ -436,10 +568,13 @@ def get_interpolation(out_file="interpolation.bt2"):
     pass
 
 if __name__ == "__main__":  
-    # get_seebeck()
-    get_seebeck_data()
-    # plot_bands()
-    # get_interpolation()
+    material_id="mp-12627"  # Nb3S4
+    # material_id="mp-924130"  # TiNiSn
+
+    # get_seebeck(material_id)
+    get_seebeck_data(material_id)
+    # plot_bands(material_id)
+    # get_interpolation(material_id)
 
 
 
